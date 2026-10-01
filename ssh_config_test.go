@@ -44,3 +44,40 @@ func TestSetEnvironmentReplacesExistingValues(t *testing.T) {
 		t.Errorf("setEnvironment() produced unexpected values: %v", values)
 	}
 }
+
+func TestConnectPassesPasswordThroughAskpass(t *testing.T) {
+	directory := t.TempDir()
+	sshPath := filepath.Join(directory, "ssh")
+	passwordPath := filepath.Join(directory, "password")
+	sourcePath := filepath.Join(directory, "source")
+	sshScript := "#!/bin/sh\nprintf '%s' \"${SSH_TUI_PASSWORD-unset}\" > \"$SSH_TUI_TEST_SOURCE_FILE\"\n\"$SSH_ASKPASS\" > \"$SSH_TUI_TEST_PASSWORD_FILE\"\n"
+	if err := os.WriteFile(sshPath, []byte(sshScript), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	t.Setenv("SSH_TUI_TEST_PASSWORD_FILE", passwordPath)
+	t.Setenv("SSH_TUI_TEST_SOURCE_FILE", sourcePath)
+	t.Setenv("SSH_TUI_PASSWORD", "test-password")
+
+	err := connect("test-host", appConfig{
+		SSHConfigPath: filepath.Join(directory, "ssh_config"),
+		PasswordEnv:   "SSH_TUI_PASSWORD",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	password, err := os.ReadFile(passwordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(password) != "test-password\n" {
+		t.Errorf("askpass returned %q, want test-password", password)
+	}
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(source) != "unset" {
+		t.Errorf("source password variable remained in ssh environment: %q", source)
+	}
+}

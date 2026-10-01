@@ -34,7 +34,8 @@ func connect(host string, config appConfig) error {
 		}
 		defer os.Remove(askpass)
 
-		command.Env = setEnvironment(os.Environ(), map[string]string{
+		environment := removeEnvironment(os.Environ(), config.PasswordEnv)
+		command.Env = setEnvironment(environment, map[string]string{
 			"SSH_ASKPASS":         askpass,
 			"SSH_ASKPASS_REQUIRE": "force",
 			askpassPasswordEnv:    password,
@@ -70,6 +71,21 @@ func createAskpass() (string, error) {
 		return "", fmt.Errorf("close SSH askpass helper: %w", err)
 	}
 	return filepath.Clean(path), nil
+}
+
+func removeEnvironment(environment []string, names ...string) []string {
+	removed := make(map[string]bool, len(names))
+	for _, name := range names {
+		removed[name] = true
+	}
+	result := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		if !removed[name] {
+			result = append(result, entry)
+		}
+	}
+	return result
 }
 
 func setEnvironment(environment []string, values map[string]string) []string {
